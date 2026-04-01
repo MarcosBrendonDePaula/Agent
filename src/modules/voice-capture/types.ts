@@ -24,6 +24,8 @@ export interface VoiceCaptureConfig {
   audioDevice?: string;
   capturerCount: number;
   pipelineConcurrency: number;
+  vadThreshold: number;      // energia mínima RMS para considerar voz (0-1)
+  vadMinVoiceRatio: number;  // % mínimo de voz no buffer para enviar ao Whisper
 }
 
 export const DEFAULT_CONFIG: Omit<VoiceCaptureConfig, "openaiApiKey"> = {
@@ -33,4 +35,6 @@ export const DEFAULT_CONFIG: Omit<VoiceCaptureConfig, "openaiApiKey"> = {
   language: "pt",
   capturerCount: 3,
   pipelineConcurrency: 3,
+  vadThreshold: 0.02,
+  vadMinVoiceRatio: 0.15,
 };

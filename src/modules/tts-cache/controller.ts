@@ -114,56 +114,15 @@ export class TTSCacheController {
 
   private checkForUpgrades(text: string, voiceId: string): void {
     const norm = normalize(text);
-    const words = tokenize(norm);
     const { regenThresholds } = this.config;
 
-    // NUNCA gera via API para palavras soltas - não vale o custo
-    // Palavras só entram no cache quando vêm como parte de um áudio maior
-
-    // frase completa (2+ palavras): se repetiu muito e ainda é stitched, upgrade
-    if (words.length >= 2) {
-      const sentenceEntry = this.store.getEntry(norm, voiceId);
-      if (sentenceEntry && sentenceEntry.quality === "stitched" && sentenceEntry.hits >= regenThresholds.sentence) {
-        this.enqueueRegen(norm, voiceId, sentenceEntry.hits);
-      }
+    // SÓ regen para frases completas que foram realmente faladas
+    // Nada de sub-combinações (bigrams, trigrams) - gasta API à toa
+    const entry = this.store.getEntry(norm, voiceId);
+    if (entry && entry.quality === "stitched" && entry.hits >= regenThresholds.sentence) {
+      this.enqueueRegen(norm, voiceId, entry.hits);
+      this.processRegenQueue();
     }
-
-    // bigrams: combinações frequentes de 2 palavras
-    for (let i = 0; i < words.length - 1; i++) {
-      const bigram = words.slice(i, i + 2).join(" ");
-      const phraseCount = this.tracker.getPhraseCount(bigram);
-      const entry = this.store.getEntry(bigram, voiceId);
-      if (phraseCount >= regenThresholds.bigram && (!entry || entry.quality === "stitched")) {
-        this.enqueueRegen(bigram, voiceId, phraseCount);
-      }
-    }
-
-    // trigrams
-    for (let i = 0; i < words.length - 2; i++) {
-      const trigram = words.slice(i, i + 3).join(" ");
-      const phraseCount = this.tracker.getPhraseCount(trigram);
-      const entry = this.store.getEntry(trigram, voiceId);
-      if (phraseCount >= regenThresholds.trigram && (!entry || entry.quality === "stitched")) {
-        this.enqueueRegen(trigram, voiceId, phraseCount);
-      }
-    }
-
-    // frases maiores (4-6 palavras)
-    if (words.length >= 4) {
-      for (let size = Math.min(words.length, 6); size >= 4; size--) {
-        for (let i = 0; i <= words.length - size; i++) {
-          const phrase = words.slice(i, i + size).join(" ");
-          const phraseCount = this.tracker.getPhraseCount(phrase);
-          const entry = this.store.getEntry(phrase, voiceId);
-          if (phraseCount >= regenThresholds.phrase && (!entry || entry.quality === "stitched")) {
-            this.enqueueRegen(phrase, voiceId, phraseCount);
-          }
-        }
-      }
-    }
-
-    // inicia processamento da fila de regen se não está rodando
-    this.processRegenQueue();
   }
 
   private enqueueRegen(text: string, voiceId: string, hits: number): void {

@@ -1,4 +1,5 @@
 import { Transcriber } from "./transcriber.ts";
+import { VAD } from "./vad.ts";
 import type { CapturerId, TranscriptionResult, VoiceCaptureConfig, VoiceCaptureEvents } from "./types.ts";
 
 interface AudioSegment {
@@ -16,6 +17,11 @@ export class TranscriptionPipeline {
   private activeJobs = 0;
   private results: TranscriptionResult[] = [];
   private drainResolve: (() => void) | null = null;
+  private silenceThreshold: number;
+  private minVoiceRatio: number;
+  private skippedCount = 0;
+  private mergedCount = 0;
+  private _muted = false;
 
   constructor(
     config: VoiceCaptureConfig,
@@ -25,9 +31,33 @@ export class TranscriptionPipeline {
     this.transcriber = new Transcriber(config);
     this.events = events;
     this.concurrency = concurrency;
+    this.silenceThreshold = config.vadThreshold ?? 0.02;
+    this.minVoiceRatio = config.vadMinVoiceRatio ?? 0.03;
   }
 
+  mute(): void { this._muted = true; }
+  unmute(): void { this._muted = false; }
+  get isMuted(): boolean { return this._muted; }
+
   push(data: Uint8Array, capturerId: CapturerId, durationMs: number): void {
+    // muted = TTS está reproduzindo, descarta pra evitar eco
+    if (this._muted) {
+      console.log(`[Pipeline] Muted (TTS reproduzindo) | descartado (Capturer ${capturerId})`);
+      return;
+    }
+
+    // VAD: só envia se pelo menos 15% do buffer tem voz
+    const voiceRatio = VAD.voiceRatio(data, this.silenceThreshold);
+
+    if (voiceRatio < this.minVoiceRatio) {
+      this.skippedCount++;
+      console.log(
+        `[Pipeline] Silêncio descartado (Capturer ${capturerId}) | voz: ${Math.round(voiceRatio * 100)}% | Economizados: ${this.skippedCount} requests`,
+      );
+      this.events.onSilence?.(capturerId);
+      return;
+    }
+
     const segment: AudioSegment = {
       data,
       capturerId,
@@ -36,11 +66,52 @@ export class TranscriptionPipeline {
     };
 
     this.queue.push(segment);
+
+    // tenta merge se tem múltiplos segmentos esperando e nenhum job ativo
+    if (this.queue.length > 1 && this.activeJobs === 0) {
+      this.mergeQueue();
+    }
+
     console.log(
-      `[Pipeline] Segmento enfileirado (Capturer ${capturerId}) | Fila: ${this.queue.length} | Processando: ${this.activeJobs}`,
+      `[Pipeline] Enfileirado (Capturer ${capturerId}) | voz: ${Math.round(voiceRatio * 100)}% | ${durationMs}ms | Fila: ${this.queue.length} | Ativo: ${this.activeJobs}`,
     );
 
     this.processNext();
+  }
+
+  private mergeQueue(): void {
+    if (this.queue.length < 2) return;
+
+    // calcula tamanho total - Whisper aceita até 25MB / ~30min
+    const totalBytes = this.queue.reduce((s, seg) => s + seg.data.length, 0);
+    const totalDuration = this.queue.reduce((s, seg) => s + seg.durationMs, 0);
+
+    // limite: max 60s ou 5MB por merge (margem segura)
+    if (totalDuration > 60000 || totalBytes > 5 * 1024 * 1024) return;
+
+    const merged = new Uint8Array(totalBytes);
+    let offset = 0;
+    const firstTimestamp = this.queue[0]!.timestamp;
+    const firstCapturer = this.queue[0]!.capturerId;
+
+    for (const seg of this.queue) {
+      merged.set(seg.data, offset);
+      offset += seg.data.length;
+    }
+
+    const mergedCount = this.queue.length;
+    this.mergedCount += mergedCount - 1;
+
+    this.queue = [{
+      data: merged,
+      capturerId: firstCapturer,
+      timestamp: firstTimestamp,
+      durationMs: totalDuration,
+    }];
+
+    console.log(
+      `[Pipeline] Merge: ${mergedCount} segmentos → 1 (${totalDuration}ms, ${(totalBytes / 1024).toFixed(0)}KB) | Requests economizados: ${this.mergedCount}`,
+    );
   }
 
   private processNext(): void {
@@ -100,5 +171,9 @@ export class TranscriptionPipeline {
 
   get pending(): number {
     return this.queue.length + this.activeJobs;
+  }
+
+  get savedRequests(): number {
+    return this.skippedCount + this.mergedCount;
   }
 }

@@ -12,6 +12,8 @@ interface ConfigFile {
   pipelineConcurrency?: number;
   audioDevice?: string | null;
   ffmpegPath?: string | null;
+  vadThreshold?: number;
+  vadMinVoiceRatio?: number;
 }
 
 export async function loadConfig(openaiApiKey: string): Promise<VoiceCaptureConfig> {
@@ -34,6 +36,8 @@ export async function loadConfig(openaiApiKey: string): Promise<VoiceCaptureConf
     pipelineConcurrency: fileConfig.pipelineConcurrency ?? DEFAULT_CONFIG.pipelineConcurrency,
     audioDevice: fileConfig.audioDevice ?? undefined,
     ffmpegPath: fileConfig.ffmpegPath ?? undefined,
+    vadThreshold: fileConfig.vadThreshold ?? DEFAULT_CONFIG.vadThreshold,
+    vadMinVoiceRatio: fileConfig.vadMinVoiceRatio ?? DEFAULT_CONFIG.vadMinVoiceRatio,
   };
 }
 
@@ -47,6 +51,8 @@ export async function saveConfig(config: VoiceCaptureConfig): Promise<void> {
     pipelineConcurrency: config.pipelineConcurrency,
     audioDevice: config.audioDevice ?? null,
     ffmpegPath: config.ffmpegPath ?? null,
+    vadThreshold: config.vadThreshold,
+    vadMinVoiceRatio: config.vadMinVoiceRatio,
   };
 
   await Bun.write(CONFIG_PATH, JSON.stringify(toSave, null, 2) + "\n");

@@ -183,7 +183,9 @@ export class TTSPipeline {
 
       console.log(`[TTS] ▶ "${result.text.slice(0, 40)}${result.text.length > 40 ? "..." : ""}" (${result.id})`);
 
+      this.events.onPlayStart?.(result.id);
       await this.player.play(result.audio, () => this.skipCurrent);
+      this.events.onPlayEnd?.(result.id);
 
       this.events.onSpeechEnd?.(result.id);
     }

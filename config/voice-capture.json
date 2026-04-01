@@ -6,5 +6,7 @@
   "capturerCount": 3,
   "pipelineConcurrency": 3,
   "audioDevice": null,
-  "ffmpegPath": null
+  "ffmpegPath": null,
+  "vadThreshold": 0.02,
+  "vadMinVoiceRatio": 0.1
 }

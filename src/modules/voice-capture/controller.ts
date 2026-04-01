@@ -126,6 +126,9 @@ export class VoiceCaptureController {
     await this.setConfig({ audioDevice: device });
   }
 
+  mute(): void { this.capture?.mute(); }
+  unmute(): void { this.capture?.unmute(); }
+
   getStatus(): { status: VoiceCaptureStatus; config: string; pending: number; text: string } {
     return {
       status: this._status,

@@ -9,32 +9,9 @@ console.log("=== AGENT - Teste Voice → TTS (com cache) ===\n");
 const ttsConfig = await loadTTSConfig(process.env.ELEVENLABS_API_KEY!);
 const voiceId = ttsConfig.voiceId;
 
-// --- Cache (idioma do TTS config) ---
+// --- Cache ---
 const cache = new TTSCacheController({}, process.cwd(), ttsConfig.language);
 await cache.init();
-
-// --- TTS ---
-const tts = new TTSController({
-  onSpeechReady(result) {
-    console.log(`[TTS] Pronto: ${result.id} (${result.durationMs}ms)`);
-  },
-  onSpeechEnd(id) {
-    console.log(`[TTS] Fim: ${id}`);
-  },
-  onError(error, req) {
-    console.error(`[TTS Erro] ${req.id}:`, error.message);
-  },
-});
-await tts.init();
-
-// Conecta cache ao TTS pipeline:
-// 1. Antes de chamar API → tenta cache
-tts.setCacheResolver((text) => cache.resolveAudio(text, voiceId));
-// 2. Após gerar via API → salva no cache
-tts.onAudioGenerated((text, audio) => cache.storeNative(text, voiceId, audio));
-// 3. Regen em background usa synthesizer
-const synthesizer = new Synthesizer(ttsConfig);
-cache.setSynthesizer((text) => synthesizer.synthesize(text));
 
 // --- Voice Capture ---
 const voiceCapture = new VoiceCaptureController({
@@ -42,19 +19,60 @@ const voiceCapture = new VoiceCaptureController({
     const text = result.text.trim();
     if (!text) return;
 
+    // filtra alucinações conhecidas do Whisper em silêncio/ruído
+    const normalized = text.toLowerCase().replace(/[.,!?;:\s]+/g, " ").trim();
+    const hallucinations = [
+      "legendas pela comunidade amara org",
+      "legendas criadas pela comunidade amara org",
+      "inscreva-se no canal",
+      "inscreva se no canal",
+      "obrigado por assistir",
+    ];
+    if (hallucinations.some((h) => normalized.includes(h))) {
+      console.log(`[Whisper] Alucinação filtrada: "${text}"`);
+      return;
+    }
+
     console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
     console.log(`  Você: "${text}"`);
     console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
 
-    // manda pro TTS - o pipeline resolve cache vs API internamente
     tts.speak(text);
   },
-
   onError(error, capturerId) {
     console.error(`[Capture Erro ${capturerId}]`, error.message);
   },
 });
 
+// --- TTS (com mute/unmute durante reprodução) ---
+const tts = new TTSController({
+  onSpeechReady(result) {
+    console.log(`[TTS] Pronto: ${result.id} (${result.durationMs}ms)`);
+  },
+  onPlayStart(_id) {
+    voiceCapture.mute();
+  },
+  onPlayEnd(_id) {
+    // delay de 500ms antes de desmutar - evita eco residual
+    setTimeout(() => voiceCapture.unmute(), 500);
+  },
+  onSpeechEnd(id) {
+    console.log(`[TTS] Fim: ${id}`);
+  },
+  onError(error, req) {
+    voiceCapture.unmute();
+    console.error(`[TTS Erro] ${req.id}:`, error.message);
+  },
+});
+await tts.init();
+
+// Conecta cache ↔ TTS
+tts.setCacheResolver((text) => cache.resolveAudio(text, voiceId));
+tts.onAudioGenerated((text, audio) => cache.storeNative(text, voiceId, audio));
+const synthesizer = new Synthesizer(ttsConfig);
+cache.setSynthesizer((text) => synthesizer.synthesize(text));
+
+// --- Start ---
 await voiceCapture.init();
 
 const devices = await voiceCapture.listDevices();

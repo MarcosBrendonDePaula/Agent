@@ -31,6 +31,8 @@ export interface TTSEvents {
   onSpeechReady: (result: TTSResult) => void;
   onSpeechStart: (request: TTSRequest) => void;
   onSpeechEnd: (id: string) => void;
+  onPlayStart: (id: string) => void;
+  onPlayEnd: (id: string) => void;
   onError: (error: Error, request: TTSRequest) => void;
   onQueueChange: (pending: number) => void;
 }
