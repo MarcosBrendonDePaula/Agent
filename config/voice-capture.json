@@ -1,0 +1,10 @@
+{
+  "sampleRate": 16000,
+  "silenceThresholdMs": 1500,
+  "maxBufferDurationMs": 10000,
+  "language": "pt",
+  "capturerCount": 3,
+  "pipelineConcurrency": 3,
+  "audioDevice": null,
+  "ffmpegPath": null
+}

@@ -1,3 +1,8 @@
+# Cache de áudio TTS
+cache/audio/
+cache/tts-index.json
+cache/word-tracker.json
+
 # Logs
 logs
 *.log

@@ -1,0 +1,16 @@
+{
+  "cacheDir": "cache/audio",
+  "indexFile": "cache/tts-index.json",
+  "maxSizeBytes": 524288000,
+  "maxEntries": 10000,
+  "minHitsToKeep": 2,
+  "autoPregenerate": true,
+  "pregenerateThreshold": 3,
+  "regenThresholds": {
+    "word": 2,
+    "bigram": 3,
+    "trigram": 4,
+    "phrase": 5,
+    "sentence": 3
+  }
+}
