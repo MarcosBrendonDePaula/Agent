@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bun --version)",
+      "Bash(sox --version)",
+      "Bash(ffmpeg -version)",
+      "Bash(where sox:*)",
+      "Bash(where ffmpeg:*)",
+      "Bash(bun init:*)",
+      "Bash(bun add:*)",
+      "Bash(ffmpeg -list_devices true -f dshow -i dummy)",
+      "Bash(bun build:*)",
+      "Bash(bun run:*)",
+      "Bash(where ffplay:*)",
+      "Bash(find E:/Agent/src -type f -not -path */node_modules/*)",
+      "Bash(mkdir -p E:/Agent/src/modules/memory)",
+      "Bash(mkdir -p E:/Agent/data)",
+      "Bash(rm:*)"
+    ]
+  }
+}

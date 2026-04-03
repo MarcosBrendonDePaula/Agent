@@ -88,7 +88,7 @@ export class VoiceCapture {
       if (cap.state === "recording") {
         const { data, durationMs, hasSpeech } = await cap.flush();
         if (data.length > 0 && hasSpeech) {
-          this.pipeline.push(data, cap.id, durationMs);
+          this.pipeline.push(data, cap.id, durationMs, true);
         }
       }
     }
@@ -141,7 +141,7 @@ export class VoiceCapture {
       console.log(
         `[VoiceCapture] Rotação (${tag}): ${durationMs}ms | Capturer ${freeIndex} gravando | Pending: ${this.pipeline.pending}`,
       );
-      this.pipeline.push(data, prevIndex, durationMs);
+      this.pipeline.push(data, prevIndex, durationMs, true);
     } else {
       console.log(
         `[VoiceCapture] Silêncio | Capturer ${freeIndex} gravando`,
@@ -150,13 +150,13 @@ export class VoiceCapture {
 
     this.events.onBufferSwitch?.(freeIndex);
 
-    // reseta o timer de max duration
-    if (reason === "speech-end" && this.maxTimer) {
+    // sempre reseta o timer após rotação
+    if (this.maxTimer) {
       clearInterval(this.maxTimer);
-      this.maxTimer = setInterval(() => {
-        this.rotate("max-duration");
-      }, this.config.maxBufferDurationMs);
     }
+    this.maxTimer = setInterval(() => {
+      this.rotate("max-duration");
+    }, this.config.maxBufferDurationMs);
   }
 
   private findFreeCapturer(excludeIndex: number): number {

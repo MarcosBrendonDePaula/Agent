@@ -3,6 +3,10 @@ cache/audio/
 cache/tts-index.json
 cache/word-tracker.json
 
+# Memory graph data
+data/memory-graph.json
+data/memory-graph.json.bak
+
 # Logs
 logs
 *.log

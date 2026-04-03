@@ -86,6 +86,87 @@ export class CacheStore {
     }
   }
 
+  // Busca fuzzy: encontra a entrada mais similar acima do threshold
+  fuzzyGet(text: string, voiceId: string, minSimilarity = 0.85): CacheEntry | undefined {
+    const norm = normalize(text);
+    const words = tokenize(norm);
+    if (words.length < 3) return undefined; // fuzzy só pra frases, não palavras soltas
+
+    let bestEntry: CacheEntry | undefined;
+    let bestScore = minSimilarity;
+
+    for (const entry of this.index.values()) {
+      if (entry.voiceId !== voiceId) continue;
+      if (entry.language !== this._language) continue;
+      if (entry.quality !== "native") continue;
+
+      const entryWords = tokenize(entry.text);
+      // poda rápida: diferença de tamanho > 30% = nem calcula
+      const lenRatio = Math.min(words.length, entryWords.length) / Math.max(words.length, entryWords.length);
+      if (lenRatio < minSimilarity) continue;
+
+      const score = this.wordSimilarity(words, entryWords);
+      if (score > bestScore) {
+        bestScore = score;
+        bestEntry = entry;
+      }
+    }
+
+    if (bestEntry) {
+      bestEntry.hits++;
+      bestEntry.lastUsed = Date.now();
+      this.dirty = true;
+      this.totalHits++;
+      this.totalLookups++;
+    }
+
+    return bestEntry;
+  }
+
+  async fuzzyGetAudio(text: string, voiceId: string, minSimilarity = 0.85): Promise<{ audio: Uint8Array; quality: AudioQuality; matchedText: string } | null> {
+    const entry = this.fuzzyGet(text, voiceId, minSimilarity);
+    if (!entry) return null;
+
+    try {
+      const filePath = resolve(this.baseDir, entry.audioFile);
+      const file = Bun.file(filePath);
+      return {
+        audio: new Uint8Array(await file.arrayBuffer()),
+        quality: entry.quality,
+        matchedText: entry.text,
+      };
+    } catch {
+      this.index.delete(entry.key);
+      this.dirty = true;
+      return null;
+    }
+  }
+
+  // Similaridade por palavras em comum (Sørensen–Dice em bigrams de palavras)
+  private wordSimilarity(a: string[], b: string[]): number {
+    if (a.length === 0 && b.length === 0) return 1;
+    if (a.length === 0 || b.length === 0) return 0;
+
+    // bigrams de palavras consecutivas
+    const bigramsA = new Set<string>();
+    for (let i = 0; i < a.length - 1; i++) bigramsA.add(`${a[i]} ${a[i + 1]}`);
+
+    const bigramsB = new Set<string>();
+    for (let i = 0; i < b.length - 1; i++) bigramsB.add(`${b[i]} ${b[i + 1]}`);
+
+    if (bigramsA.size === 0 && bigramsB.size === 0) {
+      // frases de 1 palavra: compara direto
+      return a[0] === b[0] ? 1 : 0;
+    }
+
+    let intersection = 0;
+    for (const bg of bigramsA) {
+      if (bigramsB.has(bg)) intersection++;
+    }
+
+    return (2 * intersection) / (bigramsA.size + bigramsB.size);
+  }
+
   async put(text: string, voiceId: string, audio: Uint8Array, quality: AudioQuality): Promise<CacheEntry> {
     const key = this.hash(text, voiceId);
     const audioFile = `${this.config.cacheDir}/${key}.mp3`;

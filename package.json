@@ -9,6 +9,9 @@
   "peerDependencies": {
     "typescript": "^5"
   },
+  "scripts": {
+    "dev": "bun run index.ts"
+  },
   "dependencies": {
     "openai": "^6.33.0"
   }

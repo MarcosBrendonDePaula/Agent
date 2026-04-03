@@ -66,14 +66,34 @@ export class TTSCacheController {
   }
 
   // Lookup rápido: retorna áudio native direto ou null
-  // Usado pelo TTS pipeline como cacheResolver - O(1) hash lookup
+  // Usado pelo TTS pipeline como cacheResolver
+  // 1. Match exato (hash) → O(1)
+  // 2. Match fuzzy (similaridade >= 85%) → scan linear, mas só se falhou o exato
   async resolveAudio(text: string, voiceId: string): Promise<Uint8Array | null> {
     this.tracker.trackSentence(text);
 
-    // só retorna se for native (frase completa com áudio bom)
+    // 1. match exato
     const cached = await this.store.getAudio(text, voiceId);
     if (cached && cached.quality === "native") {
+      console.log(`[Cache] HIT exato: "${text.slice(0, 40)}${text.length > 40 ? "..." : ""}"`);
       return cached.audio;
+    }
+
+    // 2. match fuzzy — frases parecidas (variações de transcrição)
+    const fuzzy = await this.store.fuzzyGetAudio(text, voiceId, 0.85);
+    if (fuzzy) {
+      console.log(`[Cache] HIT fuzzy: "${text.slice(0, 35)}..." ≈ "${fuzzy.matchedText.slice(0, 35)}..."`);
+      return fuzzy.audio;
+    }
+
+    // 3. stitching — monta a frase a partir de pedaços cacheados
+    const build = await this.builder.tryBuildFromCache(text, voiceId);
+    if (build.fullyCached && build.fragments.length > 0) {
+      const stitched = this.concatAudioBuffers(build.fragments.map(f => f.audio));
+      console.log(`[Cache] HIT stitched: "${text.slice(0, 40)}..." (${build.fragments.length} fragmentos, ${Math.round(build.cacheHitRatio * 100)}%)`);
+      // armazena o stitched pra próximo lookup ser mais rápido
+      await this.storeStitched(text, voiceId, stitched);
+      return stitched;
     }
 
     // agenda upgrades em background
@@ -82,6 +102,18 @@ export class TTSCacheController {
     }
 
     return null;
+  }
+
+  // Concatena buffers de áudio MP3 (simples: append dos buffers)
+  private concatAudioBuffers(buffers: Uint8Array[]): Uint8Array {
+    const totalLength = buffers.reduce((sum, b) => sum + b.length, 0);
+    const result = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const buf of buffers) {
+      result.set(buf, offset);
+      offset += buf.length;
+    }
+    return result;
   }
 
   // --- Idioma ---
@@ -110,14 +142,13 @@ export class TTSCacheController {
     return this.builder.isNative(text, voiceId);
   }
 
-  // --- Auto-upgrade: detecta o que precisa re-gerar ---
+  // --- Auto-upgrade: SÓ frases completas stitched → native ---
 
   private checkForUpgrades(text: string, voiceId: string): void {
     const norm = normalize(text);
     const { regenThresholds } = this.config;
 
-    // SÓ regen para frases completas que foram realmente faladas
-    // Nada de sub-combinações (bigrams, trigrams) - gasta API à toa
+    // Só regenera frases completas que foram realmente faladas e estão stitched
     const entry = this.store.getEntry(norm, voiceId);
     if (entry && entry.quality === "stitched" && entry.hits >= regenThresholds.sentence) {
       this.enqueueRegen(norm, voiceId, entry.hits);

@@ -39,17 +39,19 @@ export class TranscriptionPipeline {
   unmute(): void { this._muted = false; }
   get isMuted(): boolean { return this._muted; }
 
-  push(data: Uint8Array, capturerId: CapturerId, durationMs: number): void {
+  push(data: Uint8Array, capturerId: CapturerId, durationMs: number, confirmedSpeech = false): void {
     // muted = TTS está reproduzindo, descarta pra evitar eco
     if (this._muted) {
       console.log(`[Pipeline] Muted (TTS reproduzindo) | descartado (Capturer ${capturerId})`);
       return;
     }
 
-    // VAD: só envia se pelo menos 15% do buffer tem voz
+    // VAD: analisa conteúdo de voz no buffer
     const voiceRatio = VAD.voiceRatio(data, this.silenceThreshold);
 
-    if (voiceRatio < this.minVoiceRatio) {
+    // se o capturer NÃO confirmou speech E voiceRatio é baixo → descarta
+    // se o capturer confirmou speech, confia nele (pode ter ratio baixo em buffer longo)
+    if (!confirmedSpeech && voiceRatio < this.minVoiceRatio) {
       this.skippedCount++;
       console.log(
         `[Pipeline] Silêncio descartado (Capturer ${capturerId}) | voz: ${Math.round(voiceRatio * 100)}% | Economizados: ${this.skippedCount} requests`,

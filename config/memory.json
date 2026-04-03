@@ -1,0 +1,13 @@
+{
+  "dataFile": "data/memory-graph.json",
+  "decayRate": 0.01,
+  "reinforcementBoost": 0.15,
+  "propagationFactor": 0.3,
+  "fadeThreshold": 0.3,
+  "forgetThreshold": 0.05,
+  "maxNodes": 10000,
+  "maxEdgesPerNode": 50,
+  "autoSaveIntervalMs": 30000,
+  "searchResultsLimit": 20,
+  "recencyBoostFactor": 0.1
+}
